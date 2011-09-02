@@ -1,7 +1,7 @@
-This code provides a simple implementation allowing for an Android 1.6+ app to receive realtime events from pusher.com
+This code provides a simple implementation allowing for an Android 1.6+ app to receive realtime events from http://pusher.com
 
 This project makes use of a slightly modified Weberknect, available at http://code.google.com/p/weberknecht/
 
-Special thanks to mokasocial.com for giving me the opportunity to write and open source this!
+Special thanks to http://mokasocial.com for giving me the opportunity to write and open source this!
 
 This project is under the Apache License, Version 2.0! http://www.apache.org/licenses/LICENSE-2.0.html
