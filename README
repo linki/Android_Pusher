@@ -15,5 +15,7 @@ To get started receiving events from your Pusher account:
 5. Open PusherSampleActivity.java, and find the constants PUSHER_APP_KEY and PUSHER_CHANNEL_1
 6. Change these constants to your assigned Pusher app key and your first channel.
 7. Run the application on a device or emulator, and send messages from your Pusher console.
+8. To add more channels, duplicate the existing code that handles inbound.
+9. To handle multiple event types, modify the Activity's mHandler.handleMessage() function, checking the "type" string of the incoming event.
 
-For support, visit http://pusher.com/support
+For support, visit http://pusher.com/support.
