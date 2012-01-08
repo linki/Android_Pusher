@@ -34,8 +34,12 @@ public class Pusher
 	protected static final long WATCHDOG_SLEEP_TIME_MS = 5000;
 	private final String VERSION = "1.8.3";
 	private final String HOST = "ws.pusherapp.com";
+	
 	private final int WS_PORT = 80;
-	private final String PREFIX = "ws://";
+	private final int WSS_PORT = 443;
+	
+	private final String HTTP_PREFIX = "ws://";
+	private final String HTTPS_PREFIX = "wss://";
 
 	private WebSocket mWebSocket;
 	private final Handler mHandler;
@@ -161,14 +165,21 @@ public class Pusher
 			e.printStackTrace();
 		}
 	}
+	
+	public void connect( String application_key ) {
+		connect( application_key, false );
+	}
 
-	public void connect( String application_key )
+	public void connect( String application_key, boolean encrypted )
 	{
+		String prefix = encrypted ? HTTPS_PREFIX : HTTP_PREFIX;
+		int port      = encrypted ? WSS_PORT : WS_PORT;
+		
 		String path = "/app/" + application_key + "?client=js&version=" + VERSION;
 
 		try
 		{
-			URI url = new URI( PREFIX + HOST + ":" + WS_PORT + path );
+			URI url = new URI( prefix + HOST + ":" + port + path );
 			Log.d( "Connecting", url.toString() );
 			mWebSocket = new WebSocketConnection( url );
 			mWebSocket.setEventHandler( new WebSocketEventHandler()
