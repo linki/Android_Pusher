@@ -20,6 +20,8 @@ import org.json.JSONObject;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -27,14 +29,13 @@ import android.widget.EditText;
 import android.widget.Toast;
 import android.widget.ToggleButton;
 
-import com.emorym.android_pusher.Pusher.Channel;
-
-public class PusherSampleActivity extends Activity
+public class DeprecatedPusherSampleActivity extends Activity
 {
 	private static final String PUSHER_APP_KEY = "f40fa92a7a408191e053";
 	private static final String PUSHER_CHANNEL_1 = "test1";
 	private static final String PUSHER_CHANNEL_2 = "test2";
 
+	private Handler mHandler;
 	private Pusher mPusher;
 	private Context mContext;
 
@@ -47,14 +48,34 @@ public class PusherSampleActivity extends Activity
 		setContentView( R.layout.main );
 
 		// This Handler is going to deal with incoming messages
-		mPusher = new Pusher( PUSHER_APP_KEY );
-		mPusher.bind("message:received", new PusherCallback() {
+		mHandler = new Handler()
+		{
 			@Override
-			public void onEvent(JSONObject eventData) {
-				Log.d( "Pusher Message", "Any Channel:" + eventData.toString() );
+			public void handleMessage( Message msg )
+			{
+				super.handleMessage( msg );
+				Bundle bundleData = msg.getData();
+				if( bundleData.getString( "type" ).contentEquals( "pusher" ) )
+				{
+					try
+					{
+						JSONObject message = new JSONObject( bundleData.getString( "message" ) );
+
+						Log.d( "Pusher Message", message.toString() );
+
+						Toast.makeText( mContext, message.toString(), Toast.LENGTH_SHORT ).show();
+					}
+					catch( Exception e )
+					{
+						e.printStackTrace();
+					}
+				}
 			}
-		});
-		
+		};
+
+		mPusher = new Pusher( mHandler );
+		mPusher.connect( PUSHER_APP_KEY );
+
 		// Setup some toggles to subscribe/unsubscribe from our 2 test channels
 		final ToggleButton test1 = (ToggleButton) findViewById( R.id.toggleButton1 );
 		final ToggleButton test2 = (ToggleButton) findViewById( R.id.toggleButton2 );
@@ -67,20 +88,9 @@ public class PusherSampleActivity extends Activity
 			public void onClick( View v )
 			{
 				if( test1.isChecked() )
-				{
-					Channel channel1 = mPusher.subscribe( PUSHER_CHANNEL_1 );
-					channel1.bind("message:received", new PusherCallback() {
-						@Override
-						public void onEvent(JSONObject eventData) {
-							Log.d( "Pusher Message", PUSHER_CHANNEL_1 + ":" + eventData.toString() );
-							Toast.makeText( mContext, eventData.toString(), Toast.LENGTH_SHORT ).show();
-						}
-					});
-				}
+					mPusher.subscribe( PUSHER_CHANNEL_1 );
 				else
-				{
 					mPusher.unsubscribe( PUSHER_CHANNEL_1 );
-				}
 			}
 		} );
 
@@ -90,21 +100,9 @@ public class PusherSampleActivity extends Activity
 			public void onClick( View v )
 			{
 				if( test2.isChecked() )
-				{
-					Channel channel2 = mPusher.subscribe( PUSHER_CHANNEL_2 );
-					channel2.bind("message:received", new PusherCallback() {
-						@Override
-						public void onEvent(JSONObject eventData) {
-							Log.d( "Pusher Message", PUSHER_CHANNEL_2 + ":" +eventData.toString() );
-							EditText eventDataField = (EditText) findViewById( R.id.event_data );
-							eventDataField.setText(eventData.toString());
-						}
-					});
-				}
+					mPusher.subscribe( PUSHER_CHANNEL_2 );
 				else
-				{
 					mPusher.unsubscribe( PUSHER_CHANNEL_2 );
-				}
 			}
 		} );
 

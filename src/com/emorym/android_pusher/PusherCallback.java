@@ -4,5 +4,5 @@ import org.json.JSONObject;
 
 public interface PusherCallback
 {
-	public void handle(JSONObject json);
+	public void onEvent(JSONObject eventData);
 }

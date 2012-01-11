@@ -24,6 +24,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 import de.roderick.weberknecht.WebSocket;
@@ -43,32 +44,43 @@ public class Pusher
 	private final String HTTP_PREFIX = "ws://";
 	private final String HTTPS_PREFIX = "wss://";
 
-	private WebSocket mWebSocket;
+	private WebSocket mWebSocket = null;
 	private final Handler mHandler;
 	private Thread mWatchdog; // handles reconnecting
 	private String mSocketId;
 	private String mApplicationkey;
 	private boolean mEncrypted;
 	
-	public final HashMap<String, Channel> channels;
+	public final HashMap<String, Channel> channels = new HashMap<String, Channel>();
 	public final Channel globalChannel = new Channel("pusher_global_channel");
 
 	public Pusher( String application_key, boolean encrypted )
 	{
-		channels = new HashMap<String, Channel>();
-		mWebSocket = null;
 		mApplicationkey = application_key;
 		mEncrypted = encrypted;
-		mHandler = new Handler(this);
-		
+		mHandler = new PusherHandler(this);
 		connect();
 	}
-
+	
 	public Pusher( String application_key )
 	{
 		this(application_key, true );
 	}
-	
+
+	@Deprecated
+	public Pusher(Handler _mHandler, boolean encrypted)
+	{
+		// So we can get our messages back to whatever created this
+		mHandler = _mHandler;
+		mEncrypted = encrypted;
+	}
+
+	@Deprecated
+	public Pusher(Handler _mHandler)
+	{
+		this(_mHandler, true);
+	}
+
 	public void disconnect()
 	{
 		try
@@ -264,6 +276,10 @@ public class Pusher
 							b.putString( "event", event );
 							b.putString( "data", jsonMessage.getString( "data" ) );
 							
+							// backwards compatibility
+							b.putString( "type", "pusher" );
+							b.putString( "message", message.getText() );
+							
 							if ( jsonMessage.has( "channel" ) )
 							{
 								b.putString( "channel", jsonMessage.getString("channel") );
@@ -275,7 +291,7 @@ public class Pusher
 							mHandler.sendMessage( msg );
 						}
 					}
-					catch( JSONException e )
+					catch( Exception e )
 					{
 						e.printStackTrace();
 					}
@@ -319,12 +335,26 @@ public class Pusher
 			e.printStackTrace();
 		}
 	}
-	
-	private class Handler extends android.os.Handler
+
+	@Deprecated
+	public void connect( String application_key, boolean encrypted )
+	{
+		mApplicationkey = application_key;
+		mEncrypted = encrypted;
+		connect();
+	}
+
+	@Deprecated
+	public void connect( String application_key )
+	{
+		connect( application_key, true );
+	}
+
+	private class PusherHandler extends Handler
 	{
 		Pusher pusher;
 
-		public Handler(Pusher pusher)
+		public PusherHandler(Pusher pusher)
 		{
 			this.pusher = pusher;
 		}
@@ -353,7 +383,7 @@ public class Pusher
 		
 							for( PusherCallback callback : callbacks )
 							{
-								callback.handle( json );
+								callback.onEvent( json );
 							}
 						}
 					}
@@ -365,7 +395,7 @@ public class Pusher
 				
 					for( PusherCallback callback : callbacks )
 					{
-						callback.handle( json );
+						callback.onEvent( json );
 					}
 				}
 				
