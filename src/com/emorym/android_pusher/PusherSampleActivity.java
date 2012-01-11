@@ -48,13 +48,13 @@ public class PusherSampleActivity extends Activity
 
 		// This Handler is going to deal with incoming messages
 		mPusher = new Pusher( PUSHER_APP_KEY );
-		mPusher.bind("message:received", new PusherCallback() {
+		mPusher.bindAll(new PusherCallback() {
 			@Override
-			public void onEvent(JSONObject eventData) {
-				Log.d( "Pusher Message", "Any Channel:" + eventData.toString() );
+			public void onEvent(String eventName, JSONObject eventData) {
+				Log.d( "Pusher Message", "Any Channel: " + eventName + " - " + eventData.toString() );
 			}
 		});
-		
+
 		// Setup some toggles to subscribe/unsubscribe from our 2 test channels
 		final ToggleButton test1 = (ToggleButton) findViewById( R.id.toggleButton1 );
 		final ToggleButton test2 = (ToggleButton) findViewById( R.id.toggleButton2 );
@@ -92,10 +92,10 @@ public class PusherSampleActivity extends Activity
 				if( test2.isChecked() )
 				{
 					Channel channel2 = mPusher.subscribe( PUSHER_CHANNEL_2 );
-					channel2.bind("message:received", new PusherCallback() {
+					channel2.bindAll(new PusherCallback() {
 						@Override
-						public void onEvent(JSONObject eventData) {
-							Log.d( "Pusher Message", PUSHER_CHANNEL_2 + ":" +eventData.toString() );
+						public void onEvent(String eventName, JSONObject eventData) {
+							Log.d( "Pusher Message", PUSHER_CHANNEL_2 + ":" + eventName + " " + eventData.toString() );
 							EditText eventDataField = (EditText) findViewById( R.id.event_data );
 							eventDataField.setText(eventData.toString());
 						}
