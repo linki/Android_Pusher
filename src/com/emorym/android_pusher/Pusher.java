@@ -16,12 +16,14 @@ package com.emorym.android_pusher;
  */
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 import de.roderick.weberknecht.WebSocket;
@@ -34,34 +36,39 @@ public class Pusher
 	protected static final long WATCHDOG_SLEEP_TIME_MS = 5000;
 	private final String VERSION = "1.8.3";
 	private final String HOST = "ws.pusherapp.com";
+	
 	private final int WS_PORT = 80;
-	private final String PREFIX = "ws://";
+	private final int WSS_PORT = 443;
+	
+	private final String HTTP_PREFIX = "ws://";
+	private final String HTTPS_PREFIX = "wss://";
 
 	private WebSocket mWebSocket;
 	private final Handler mHandler;
 	private Thread mWatchdog; // handles reconnecting
 	private String mSocketId;
+	private String mApplicationkey;
+	private boolean mEncrypted;
+	
+	public final HashMap<String, Channel> channels;
+	public final Channel globalChannel = new Channel("pusher_global_channel");
 
-	public Pusher(Handler _mHandler)
+	public Pusher( String application_key, boolean encrypted )
 	{
-		// So we can get our messages back to whatever created this
-		mHandler = _mHandler;
 		channels = new HashMap<String, Channel>();
 		mWebSocket = null;
+		mApplicationkey = application_key;
+		mEncrypted = encrypted;
+		mHandler = new Handler(this);
+		
+		connect();
 	}
 
-	private class Channel
+	public Pusher( String application_key )
 	{
-		public String name;
-
-		public Channel(String _name)
-		{
-			name = _name;
-		}
+		this(application_key, true );
 	}
-
-	private final HashMap<String, Channel> channels;
-
+	
 	public void disconnect()
 	{
 		try
@@ -76,7 +83,37 @@ public class Pusher
 		}
 	}
 
-	public void subscribe( String channelName )
+	public class Channel
+	{
+		public final String name;
+		
+		public final HashMap<String, List<PusherCallback>> callbacks = new HashMap<String, List<PusherCallback>>();
+		
+		public Channel(String _name)
+		{
+			name = _name;
+		}
+		
+		public void bind(String event, PusherCallback callback)
+		{
+			if ( ! callbacks.containsKey( event ) )
+			{
+				callbacks.put( event, new ArrayList<PusherCallback>() );
+			}
+			
+			callbacks.get( event ).add( callback );
+		}
+		
+		public void unbind(String event)
+		{
+			if ( callbacks.containsKey( event ) )
+			{
+				callbacks.remove( event );
+			}
+		}
+	}
+
+	public Channel subscribe( String channelName )
 	{
 		Channel c = new Channel( channelName );
 
@@ -93,8 +130,28 @@ public class Pusher
 		}
 
 		channels.put( channelName, c );
+		
+		return c;
 	}
-
+	
+	public void bind(String event, PusherCallback callback)
+	{
+		if ( ! globalChannel.callbacks.containsKey( event ) )
+		{
+			globalChannel.callbacks.put( event, new ArrayList<PusherCallback>() );
+		}
+		
+		globalChannel.callbacks.get( event ).add( callback );
+	}
+	
+	public void unbind(String event)
+	{
+		if ( globalChannel.callbacks.containsKey( event ) )
+		{
+			globalChannel.callbacks.remove( event );
+		}
+	}
+	
 	public void unsubscribe( String channelName )
 	{
 		if( channels.containsKey( channelName ) )
@@ -161,14 +218,17 @@ public class Pusher
 			e.printStackTrace();
 		}
 	}
-
-	public void connect( String application_key )
+	
+	public void connect()
 	{
-		String path = "/app/" + application_key + "?client=js&version=" + VERSION;
+		String prefix = mEncrypted ? HTTPS_PREFIX : HTTP_PREFIX;
+		int port      = mEncrypted ? WSS_PORT : WS_PORT;
+		
+		String path = "/app/" + mApplicationkey + "?client=js&version=" + VERSION;
 
 		try
 		{
-			URI url = new URI( PREFIX + HOST + ":" + WS_PORT + path );
+			URI url = new URI( prefix + HOST + ":" + port + path );
 			Log.d( "Connecting", url.toString() );
 			mWebSocket = new WebSocketConnection( url );
 			mWebSocket.setEventHandler( new WebSocketEventHandler()
@@ -200,14 +260,22 @@ public class Pusher
 						else
 						{
 							Bundle b = new Bundle();
-							b.putString( "type", "pusher" );
-							b.putString( "message", message.getText() );
+							
+							b.putString( "event", event );
+							b.putString( "data", jsonMessage.getString( "data" ) );
+							
+							if ( jsonMessage.has( "channel" ) )
+							{
+								b.putString( "channel", jsonMessage.getString("channel") );
+							}
+
 							Message msg = new Message();
 							msg.setData( b );
+						
 							mHandler.sendMessage( msg );
 						}
 					}
-					catch( Exception e )
+					catch( JSONException e )
 					{
 						e.printStackTrace();
 					}
@@ -249,6 +317,61 @@ public class Pusher
 		catch( Exception e )
 		{
 			e.printStackTrace();
+		}
+	}
+	
+	private class Handler extends android.os.Handler
+	{
+		Pusher pusher;
+
+		public Handler(Pusher pusher)
+		{
+			this.pusher = pusher;
+		}
+		
+		public void handleMessage(Message msg)
+		{
+			Log.d("handle", msg.getData().toString());
+			
+			try
+			{
+				String event = msg.getData().getString("event");
+				
+				JSONObject json = new JSONObject( msg.getData().getString("data") );
+
+				if (msg.getData().containsKey("channel"))
+				{
+					String channelName = msg.getData().getString("channel");
+					
+					if (pusher.channels.containsKey(channelName))
+					{
+						Channel channel = pusher.channels.get(channelName);
+					
+						if (channel.callbacks.containsKey(event))
+						{
+							List<PusherCallback> callbacks = channel.callbacks.get(event);
+		
+							for( PusherCallback callback : callbacks )
+							{
+								callback.handle( json );
+							}
+						}
+					}
+				}
+				
+				if( pusher.globalChannel.callbacks.containsKey( event ))
+				{
+					List<PusherCallback> callbacks = pusher.globalChannel.callbacks.get(event);
+				
+					for( PusherCallback callback : callbacks )
+					{
+						callback.handle( json );
+					}
+				}
+				
+			} catch (JSONException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 }
