@@ -24,6 +24,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 import de.roderick.weberknecht.WebSocket;
@@ -43,32 +44,43 @@ public class Pusher
 	private final String HTTP_PREFIX = "ws://";
 	private final String HTTPS_PREFIX = "wss://";
 
-	private WebSocket mWebSocket;
+	private WebSocket mWebSocket = null;
 	private final Handler mHandler;
 	private Thread mWatchdog; // handles reconnecting
 	private String mSocketId;
 	private String mApplicationkey;
 	private boolean mEncrypted;
 	
-	public final HashMap<String, Channel> channels;
+	public final HashMap<String, Channel> channels = new HashMap<String, Channel>();
 	public final Channel globalChannel = new Channel("pusher_global_channel");
 
 	public Pusher( String application_key, boolean encrypted )
 	{
-		channels = new HashMap<String, Channel>();
-		mWebSocket = null;
 		mApplicationkey = application_key;
 		mEncrypted = encrypted;
-		mHandler = new Handler(this);
-		
+		mHandler = new PusherHandler(this);
 		connect();
 	}
-
+	
 	public Pusher( String application_key )
 	{
 		this(application_key, true );
 	}
-	
+
+	@Deprecated
+	public Pusher(Handler _mHandler, boolean encrypted)
+	{
+		// So we can get our messages back to whatever created this
+		mHandler = _mHandler;
+		mEncrypted = encrypted;
+	}
+
+	@Deprecated
+	public Pusher(Handler _mHandler)
+	{
+		this(_mHandler, true);
+	}
+
 	public void disconnect()
 	{
 		try
@@ -83,34 +95,25 @@ public class Pusher
 		}
 	}
 
-	public class Channel
+	public Pusher bind(String event, PusherCallback callback)
 	{
-		public final String name;
+		globalChannel.bind( event, callback );
 		
-		public final HashMap<String, List<PusherCallback>> callbacks = new HashMap<String, List<PusherCallback>>();
+		return this;
+	}
+	
+	public Pusher bindAll(PusherCallback callback)
+	{
+		globalChannel.bindAll( callback );
 		
-		public Channel(String _name)
-		{
-			name = _name;
-		}
+		return this;
+	}
+
+	public Pusher unbind(String event)
+	{
+		globalChannel.unbind( event );
 		
-		public void bind(String event, PusherCallback callback)
-		{
-			if ( ! callbacks.containsKey( event ) )
-			{
-				callbacks.put( event, new ArrayList<PusherCallback>() );
-			}
-			
-			callbacks.get( event ).add( callback );
-		}
-		
-		public void unbind(String event)
-		{
-			if ( callbacks.containsKey( event ) )
-			{
-				callbacks.remove( event );
-			}
-		}
+		return this;
 	}
 
 	public Channel subscribe( String channelName )
@@ -132,24 +135,6 @@ public class Pusher
 		channels.put( channelName, c );
 		
 		return c;
-	}
-	
-	public void bind(String event, PusherCallback callback)
-	{
-		if ( ! globalChannel.callbacks.containsKey( event ) )
-		{
-			globalChannel.callbacks.put( event, new ArrayList<PusherCallback>() );
-		}
-		
-		globalChannel.callbacks.get( event ).add( callback );
-	}
-	
-	public void unbind(String event)
-	{
-		if ( globalChannel.callbacks.containsKey( event ) )
-		{
-			globalChannel.callbacks.remove( event );
-		}
 	}
 	
 	public void unsubscribe( String channelName )
@@ -264,6 +249,10 @@ public class Pusher
 							b.putString( "event", event );
 							b.putString( "data", jsonMessage.getString( "data" ) );
 							
+							// backwards compatibility
+							b.putString( "type", "pusher" );
+							b.putString( "message", message.getText() );
+							
 							if ( jsonMessage.has( "channel" ) )
 							{
 								b.putString( "channel", jsonMessage.getString("channel") );
@@ -275,7 +264,7 @@ public class Pusher
 							mHandler.sendMessage( msg );
 						}
 					}
-					catch( JSONException e )
+					catch( Exception e )
 					{
 						e.printStackTrace();
 					}
@@ -319,12 +308,89 @@ public class Pusher
 			e.printStackTrace();
 		}
 	}
+
+	@Deprecated
+	public void connect( String application_key, boolean encrypted )
+	{
+		mApplicationkey = application_key;
+		mEncrypted = encrypted;
+		connect();
+	}
+
+	@Deprecated
+	public void connect( String application_key )
+	{
+		connect( application_key, true );
+	}
 	
-	private class Handler extends android.os.Handler
+	public class Channel
+	{
+		public final String name;
+		
+		public final HashMap<String, List<PusherCallback>> callbacks = new HashMap<String, List<PusherCallback>>();
+		public final List<PusherCallback> globalCallbacks = new ArrayList<PusherCallback>();
+		
+		public Channel(String _name)
+		{
+			name = _name;
+		}
+		
+		public Channel bind(String event, PusherCallback callback)
+		{
+			if ( ! callbacks.containsKey( event ) )
+			{
+				callbacks.put( event, new ArrayList<PusherCallback>() );
+			}
+			
+			callbacks.get( event ).add( callback );
+			
+			return this;
+		}
+		
+		public Channel bindAll(PusherCallback callback)
+		{
+			globalCallbacks.add( callback );
+			
+			return this;
+		}
+
+		/**
+		 * TODO
+		 * unbind should unbind callbacks from events or from the global callback list
+		 * instead of whole events, in order to mirror js lib
+		 **/
+		public Channel unbind(String event)
+		{
+			if ( callbacks.containsKey( event ) )
+			{
+				callbacks.remove( event );
+			}
+			
+			return this;
+		}
+		
+		public void dispatch( String eventName, JSONObject eventData )
+		{
+			for( PusherCallback callback : globalCallbacks )
+			{
+				callback.onEvent( eventName, eventData );
+			}
+
+			if( callbacks.containsKey( eventName ))
+			{
+				for( PusherCallback callback : callbacks.get( eventName ) )
+				{
+					callback.onEvent( eventData );
+				}
+			}
+		}
+	}
+
+	private class PusherHandler extends Handler
 	{
 		Pusher pusher;
 
-		public Handler(Pusher pusher)
+		public PusherHandler(Pusher pusher)
 		{
 			this.pusher = pusher;
 		}
@@ -335,40 +401,23 @@ public class Pusher
 			
 			try
 			{
-				String event = msg.getData().getString("event");
+				String eventName = msg.getData().getString("event");
 				
-				JSONObject json = new JSONObject( msg.getData().getString("data") );
-
+				JSONObject eventData = new JSONObject( msg.getData().getString("data") );
+				
+				pusher.globalChannel.dispatch( eventName, eventData );
+				
 				if (msg.getData().containsKey("channel"))
 				{
 					String channelName = msg.getData().getString("channel");
 					
-					if (pusher.channels.containsKey(channelName))
+					if (pusher.channels.containsKey( channelName ))
 					{
-						Channel channel = pusher.channels.get(channelName);
-					
-						if (channel.callbacks.containsKey(event))
-						{
-							List<PusherCallback> callbacks = channel.callbacks.get(event);
-		
-							for( PusherCallback callback : callbacks )
-							{
-								callback.handle( json );
-							}
-						}
+						Channel channel = pusher.channels.get( channelName );
+						
+						channel.dispatch( eventName, eventData );
 					}
 				}
-				
-				if( pusher.globalChannel.callbacks.containsKey( event ))
-				{
-					List<PusherCallback> callbacks = pusher.globalChannel.callbacks.get(event);
-				
-					for( PusherCallback callback : callbacks )
-					{
-						callback.handle( json );
-					}
-				}
-				
 			} catch (JSONException e) {
 				e.printStackTrace();
 			}
