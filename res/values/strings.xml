@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="hello">Hello World, PusherSampleActivity!</string>
     <string name="app_name">PusherSample</string>
-    <string name="channel_toggle_1">test1</string>
 </resources>
